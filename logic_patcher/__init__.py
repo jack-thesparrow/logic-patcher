@@ -1,0 +1,4 @@
+# logic_patcher/__init__.py
+
+__version__ = "1.0.0"
+__app_name__ = "logic-patcher"
