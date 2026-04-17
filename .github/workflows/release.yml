@@ -7,10 +7,9 @@ on:
 
 permissions:
   contents: write
-  id-token: write  # required for PyPI trusted publishing
 
 jobs:
-  # ── Run tests before releasing ──────────────────────────────────────────────
+  # ── 1. Tests must pass first ─────────────────────────────────────────────────
   test:
     runs-on: ubuntu-latest
     steps:
@@ -21,7 +20,7 @@ jobs:
       - run: pip install -e .
       - run: python -m unittest discover -s tests -v
 
-  # ── Build source distribution + wheel ───────────────────────────────────────
+  # ── 2. Build artifacts (only if tests pass) ───────────────────────────────────
   build-sdist:
     needs: test
     runs-on: ubuntu-latest
@@ -37,7 +36,6 @@ jobs:
           name: python-dist
           path: dist/
 
-  # ── Build Debian package ─────────────────────────────────────────────────────
   build-deb:
     needs: test
     runs-on: ubuntu-latest
@@ -53,7 +51,6 @@ jobs:
           name: deb-package
           path: build/deb/*.deb
 
-  # ── Build Windows EXE ────────────────────────────────────────────────────────
   build-exe:
     needs: test
     runs-on: windows-latest
@@ -69,23 +66,7 @@ jobs:
           name: windows-exe
           path: dist/*.exe
 
-  # ── Publish to PyPI (trusted publishing — no token needed) ──────────────────
-  # Requires PyPI trusted publisher to be configured first:
-  # PyPI → Your project → Publishing → Add GitHub publisher
-  # Owner: jack-thesparrow  Repo: logic-patcher  Workflow: release.yml  Environment: pypi
-  publish-pypi:
-    needs: build-sdist
-    runs-on: ubuntu-latest
-    continue-on-error: true  # don't block the GitHub Release if PyPI isn't configured yet
-    environment: pypi
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: python-dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-
-  # ── Create GitHub Release with all artifacts ─────────────────────────────────
+  # ── 3. Create GitHub Release only when ALL builds succeed ─────────────────────
   github-release:
     needs: [build-sdist, build-deb, build-exe]
     runs-on: ubuntu-latest
