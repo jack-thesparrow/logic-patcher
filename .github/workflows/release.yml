@@ -1,0 +1,106 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write  # required for PyPI trusted publishing
+
+jobs:
+  # ── Run tests before releasing ──────────────────────────────────────────────
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - run: python -m unittest discover -s tests -v
+
+  # ── Build source distribution + wheel ───────────────────────────────────────
+  build-sdist:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build
+      - run: python -m build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+
+  # ── Build Debian package ─────────────────────────────────────────────────────
+  build-deb:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get install -y dpkg python3-tk
+      - run: bash scripts/build_deb.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-package
+          path: build/deb/*.deb
+
+  # ── Build Windows EXE ────────────────────────────────────────────────────────
+  build-exe:
+    needs: test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: bash scripts/build_exe.sh
+        shell: bash
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: dist/*.exe
+
+  # ── Publish to PyPI (trusted publishing — no token needed) ──────────────────
+  publish-pypi:
+    needs: build-sdist
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # ── Create GitHub Release with all artifacts ─────────────────────────────────
+  github-release:
+    needs: [build-sdist, build-deb, build-exe]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: python-dist
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: deb-package
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-exe
+          path: artifacts/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**
+          generate_release_notes: true
