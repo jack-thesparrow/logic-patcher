@@ -1,0 +1,15 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "logic-patcher"
+version = "1.0.0"
+requires-python = ">=3.8"
+dependencies = []
+
+[project.scripts]
+logic-patcher = "logic_patcher.cli:main"
+
+[project.gui-scripts]
+logic-patcher-gui = "logic_patcher.gui:launch_gui"

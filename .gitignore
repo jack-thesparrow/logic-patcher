@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# PyInstaller
+*.spec
+
+# Distribution / packaging
+*.whl
+*.tar.gz
+
+# Testing
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project output
+replaced_output/
+
+# PyInstaller temp entry wrappers (created/deleted by build_exe.sh)
+_gui_entry.py
+_cli_entry.py
