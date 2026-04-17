@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: write
-  id-token: write  # required for PyPI trusted publishing
 
 jobs:
   # ── 1. Tests must pass first ─────────────────────────────────────────────────
@@ -67,20 +66,9 @@ jobs:
           name: windows-exe
           path: dist/*.exe
 
-  # ── 3. Publish to PyPI and create GitHub Release (only when ALL builds pass) ──
-  publish-pypi:
-    needs: build-sdist
-    runs-on: ubuntu-latest
-    environment: pypi
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: python-dist
-          path: dist/
-      - uses: pypa/gh-action-pypi-publish@release/v1
-
+  # ── 3. Create GitHub Release only when ALL builds succeed ─────────────────────
   github-release:
-    needs: [publish-pypi, build-deb, build-exe]
+    needs: [build-sdist, build-deb, build-exe]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
