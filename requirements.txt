@@ -1,3 +1,10 @@
-# path_to_file: requirements.txt
-
-# No external dependencies required
+# No pip-installable dependencies.
+# tkinter is required for the GUI but must be installed via the system package manager:
+#
+#   Ubuntu/Debian:  sudo apt install python3-tk
+#   Fedora/RHEL:    sudo dnf install python3-tkinter
+#   Arch:           sudo pacman -S tk
+#   Windows/macOS:  bundled with the official Python installer (python.org)
+#
+# To install the package itself:
+#   pip install -e .
