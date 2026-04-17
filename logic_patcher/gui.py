@@ -1,3 +1,5 @@
+# logic_patcher/gui.py
+
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from .core import process_folder
@@ -5,7 +7,7 @@ from .core import process_folder
 
 def launch_gui():
     root = tk.Tk()
-    root.title("Logic File Replacer")
+    root.title("Logic Patcher")
     root.geometry("600x500")
 
     name_var = tk.StringVar()
@@ -33,6 +35,9 @@ def launch_gui():
 
         output.delete(1.0, tk.END)
 
+        progress["value"] = 0
+        root.update()
+
         changed, total, out = process_folder(name, roll, folder, log)
 
         log("\n===== SUMMARY =====")
@@ -40,7 +45,7 @@ def launch_gui():
         log(f"Total replacements: {total}")
         log(f"Output: {out}")
 
-        messagebox.showinfo("Done", "Completed")
+        messagebox.showinfo("Done", "Processing completed!")
 
     tk.Label(root, text="Full Name").pack()
     tk.Entry(root, textvariable=name_var).pack()
@@ -55,7 +60,10 @@ def launch_gui():
     tk.Entry(frame, textvariable=folder_var, width=40).pack(side=tk.LEFT)
     tk.Button(frame, text="Browse", command=browse).pack(side=tk.LEFT)
 
-    tk.Button(root, text="Start", command=start).pack(pady=10)
+    tk.Button(root, text="Start", command=start, bg="green", fg="white").pack(pady=10)
+
+    progress = ttk.Progressbar(root, length=400)
+    progress.pack(pady=5)
 
     output = tk.Text(root)
     output.pack(fill=tk.BOTH, expand=True)
