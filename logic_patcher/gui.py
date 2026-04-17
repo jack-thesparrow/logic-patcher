@@ -1,5 +1,6 @@
 # logic_patcher/gui.py
 
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 from .core import process_folder
@@ -22,7 +23,12 @@ def launch_gui():
     def log(msg):
         output.insert(tk.END, msg + "\n")
         output.see(tk.END)
-        root.update()
+        root.update_idletasks()
+
+    def update_progress(current, total):
+        progress["maximum"] = total
+        progress["value"] = current
+        root.update_idletasks()
 
     def start():
         name = name_var.get().strip()
@@ -34,18 +40,29 @@ def launch_gui():
             return
 
         output.delete(1.0, tk.END)
-
         progress["value"] = 0
-        root.update()
+        start_btn.config(state=tk.DISABLED)
 
-        changed, total, out = process_folder(name, roll, folder, log)
+        def run():
+            try:
+                changed, total, out = process_folder(name, roll, folder, log, update_progress)
+                root.after(0, lambda: finish(changed, total, out))
+            except Exception as e:
+                root.after(0, lambda err=e: on_error(str(err)))
 
+        threading.Thread(target=run, daemon=True).start()
+
+    def finish(changed, total, out):
         log("\n===== SUMMARY =====")
         log(f"Files changed: {changed}")
         log(f"Total replacements: {total}")
         log(f"Output: {out}")
-
+        start_btn.config(state=tk.NORMAL)
         messagebox.showinfo("Done", "Processing completed!")
+
+    def on_error(msg):
+        messagebox.showerror("Error", msg)
+        start_btn.config(state=tk.NORMAL)
 
     tk.Label(root, text="Full Name").pack()
     tk.Entry(root, textvariable=name_var).pack()
@@ -60,7 +77,8 @@ def launch_gui():
     tk.Entry(frame, textvariable=folder_var, width=40).pack(side=tk.LEFT)
     tk.Button(frame, text="Browse", command=browse).pack(side=tk.LEFT)
 
-    tk.Button(root, text="Start", command=start, bg="green", fg="white").pack(pady=10)
+    start_btn = tk.Button(root, text="Start", command=start, bg="green", fg="white")
+    start_btn.pack(pady=10)
 
     progress = ttk.Progressbar(root, length=400)
     progress.pack(pady=5)
