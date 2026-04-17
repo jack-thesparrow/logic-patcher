@@ -1,9 +1,11 @@
+# logic_patcher/cli.py
+
 import argparse
 from .core import process_folder
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Logic File Replacer")
+    parser = argparse.ArgumentParser(description="Logic Patcher CLI")
     parser.add_argument("name", help="Full Name")
     parser.add_argument("roll", help="Roll Number")
     parser.add_argument("folder", help="Target Folder")
