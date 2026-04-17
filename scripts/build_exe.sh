@@ -5,7 +5,7 @@ set -euo pipefail
 APP="logic-patcher"
 
 echo "Installing dependencies..."
-pip install pyinstaller --quiet
+pip install pyinstaller pillow --quiet
 pip install -e . --quiet
 
 # PyInstaller cannot use files with relative imports as entry points.
