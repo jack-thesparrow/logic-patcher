@@ -70,9 +70,13 @@ jobs:
           path: dist/*.exe
 
   # ── Publish to PyPI (trusted publishing — no token needed) ──────────────────
+  # Requires PyPI trusted publisher to be configured first:
+  # PyPI → Your project → Publishing → Add GitHub publisher
+  # Owner: jack-thesparrow  Repo: logic-patcher  Workflow: release.yml  Environment: pypi
   publish-pypi:
     needs: build-sdist
     runs-on: ubuntu-latest
+    continue-on-error: true  # don't block the GitHub Release if PyPI isn't configured yet
     environment: pypi
     steps:
       - uses: actions/download-artifact@v4
