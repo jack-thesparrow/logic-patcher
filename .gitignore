@@ -37,3 +37,7 @@ Thumbs.db
 
 # Project output
 replaced_output/
+
+# PyInstaller temp entry wrappers (created/deleted by build_exe.sh)
+_gui_entry.py
+_cli_entry.py

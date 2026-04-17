@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build Windows EXEs via PyInstaller (run from project root on Windows or Wine)
+# Build Windows EXEs via PyInstaller (run from project root on Windows or in CI)
 set -euo pipefail
 
 APP="logic-patcher"
@@ -8,21 +8,36 @@ echo "Installing dependencies..."
 pip install pyinstaller --quiet
 pip install -e . --quiet
 
-echo "Building GUI executable..."
+# PyInstaller cannot use files with relative imports as entry points.
+# These wrappers use absolute imports after the package is installed above.
+cat > _gui_entry.py <<'EOF'
+from logic_patcher.gui import launch_gui
+launch_gui()
+EOF
+
+cat > _cli_entry.py <<'EOF'
+from logic_patcher.cli import main
+main()
+EOF
+
+echo "Building GUI executable (windowed, no console)..."
 pyinstaller \
     --onefile \
     --windowed \
     --name "${APP}-gui" \
     --icon assets/icon.ico \
-    --add-data "assets/icon.ico;assets" \
-    logic_patcher/gui.py
+    --collect-all logic_patcher \
+    _gui_entry.py
 
 echo "Building CLI executable..."
 pyinstaller \
     --onefile \
     --console \
     --name "${APP}" \
-    logic_patcher/cli.py
+    --collect-all logic_patcher \
+    _cli_entry.py
+
+rm -f _gui_entry.py _cli_entry.py
 
 echo "Done. Outputs in dist/"
-ls -lh dist/
+ls dist/
