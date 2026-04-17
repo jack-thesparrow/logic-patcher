@@ -1,4 +1,8 @@
-import os, re
+# logic_patcher/core.py
+
+import os
+import re
+from .utils import read_binary, write_binary, copy_file, logger, safe_decode
 
 PATTERN = rb"\x00([\x05-\x50])([A-Za-z][^\x00]{2,60}?[Bb][Tt]\d{2}[A-Za-z]{2}\d{3})((?:x)?(?:sr|q))(\x00)"
 
@@ -19,40 +23,32 @@ def process_folder(name, roll, folder, log_callback=None):
             rel = os.path.relpath(src, folder)
             dst = os.path.join(out_folder, rel)
 
-            os.makedirs(os.path.dirname(dst), exist_ok=True)
-
             if not fname.endswith(".logic"):
-                with open(src, "rb") as f:
-                    data = f.read()
-                with open(dst, "wb") as f:
-                    f.write(data)
+                copy_file(src, dst)
                 continue
 
-            with open(src, "rb") as f:
-                data = f.read()
+            data = read_binary(src)
 
             found = []
 
             def rep(m):
-                found.append(m.group(2).decode(errors="replace"))
+                found.append(m.group(2))
                 return (
                     b"\x00" + bytes([new_len]) + new_content + m.group(3) + m.group(4)
                 )
 
             new_data, n = re.subn(PATTERN, rep, data)
 
-            with open(dst, "wb") as f:
-                f.write(new_data)
+            write_binary(dst, new_data)
 
             if n > 0:
                 changed_files += 1
                 total_replacements += n
-                if log_callback:
-                    log_callback(f"[OK] {rel} ({n} replacements)")
-                    for old in found:
-                        log_callback(f"   replaced: {old}")
+
+                logger(log_callback, f"[OK] {rel} ({n} replacements)")
+                for old in found:
+                    logger(log_callback, f"   replaced: {safe_decode(old)}")
             else:
-                if log_callback:
-                    log_callback(f"[--] {rel} (no match)")
+                logger(log_callback, f"[--] {rel} (no match)")
 
     return changed_files, total_replacements, out_folder
