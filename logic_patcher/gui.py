@@ -706,7 +706,7 @@ class _MainWindow(QMainWindow):
         dlg = QDialog(self)
         dlg.setWindowTitle("Update Available")
         dlg.setWindowIcon(self.windowIcon())
-        dlg.setFixedWidth(360)
+        dlg.setFixedWidth(440)
         lay = QVBoxLayout(dlg)
         lay.setSpacing(12)
         lay.setContentsMargins(20, 20, 20, 20)
