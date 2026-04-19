@@ -2,7 +2,7 @@
 
 A fast, cross-platform utility that patches `.logic` binary files by finding and replacing the encoded student name and roll number stored inside. Ships with a polished GUI and a scriptable CLI.
 
-> [!WARNING]
+> [!CAUTION]
 > **USE AT YOUR OWN RISK**
 >
 > This tool modifies academic `.logic` files. By using it, you accept **full and sole responsibility** for any consequences, including:
