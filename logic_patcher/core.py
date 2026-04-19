@@ -1,93 +1,184 @@
 # logic_patcher/core.py
 
 import os
-import re
-import struct
-import warnings
-from .utils import read_binary, write_binary, copy_file, logger, safe_decode
+import threading
+from concurrent.futures import ThreadPoolExecutor
+from .utils import read_binary, write_binary, copy_file, logger
 
-# Java DataOutputStream.writeUTF() stores each string as a 2-byte big-endian unsigned short
-# (the UTF-8 byte count) followed by the UTF-8 bytes.  In the .logic binary the layout is:
-#
-#   [high_byte=\x00] [low_byte=length] [content...] [suffix] [next_high_byte=\x00]
-#
-# The leading literal \x00 in the pattern asserts high byte == 0 (strings < 256 bytes).
-# Group 1 is the low byte of the 2-byte length header.
-# Group 2 is the content (the name+roll string itself).
-# Group 3 is the Java serialization type suffix (sr, q, or xsr).
-# Group 4 is the \x00 that begins the next string's 2-byte length header.
-PATTERN = rb"\x00([\x05-\xff])([A-Za-z][^\x00]{2,245}?[Bb][Tt]\d{2}[A-Za-z]{2}\d{3})((?:x)?(?:sr|q))(\x00)"
+# Unique 20-byte sequence that immediately precedes the TC_STRING in every .logic file.
+ANCHOR = bytes.fromhex('7371007e001fffffffffffffffff707070707070')
+
+# I/O-bound work benefits from more threads than CPU count.
+_MAX_WORKERS = min(32, (os.cpu_count() or 4) * 4)
+
+
+def _read_student_string(data):
+    """
+    Locate the anchor, then parse the Java TC_STRING (tag 0x74) that follows.
+    Returns (raw_str, tag_off) or (None, None).
+    """
+    idx = data.find(ANCHOR)
+    if idx == -1:
+        return None, None
+
+    tag_off = idx + len(ANCHOR)
+    if tag_off + 3 > len(data):
+        return None, None
+    if data[tag_off] != 0x74:
+        return None, None
+
+    length = int.from_bytes(data[tag_off + 1:tag_off + 3], 'big')
+    end = tag_off + 3 + length
+    if end > len(data):
+        return None, None
+
+    raw = data[tag_off + 3:end].decode('utf-8', errors='replace')
+    return raw, tag_off
+
+
+def _patch(data, tag_off, old_raw, new_raw):
+    """
+    Overwrite the TC_STRING in-place, updating the 2-byte big-endian length field.
+    Returns the patched bytearray, or None on mismatch.
+    """
+    buf = bytearray(data)
+    old_bytes = old_raw.encode('utf-8')
+    new_bytes = new_raw.encode('utf-8')
+
+    str_off = tag_off + 3
+    if buf[str_off:str_off + len(old_bytes)] != old_bytes:
+        return None
+
+    new_len = len(new_bytes)
+    buf[tag_off + 1] = (new_len >> 8) & 0xff
+    buf[tag_off + 2] = new_len & 0xff
+    buf[str_off:str_off + len(old_bytes)] = new_bytes
+    return bytes(buf)
+
+
+def _patch_one(src, dst, new_raw, label, log_callback):
+    """Read, patch, and write a single .logic file. Returns (changed, reps)."""
+    data = read_binary(src)
+    raw, tag_off = _read_student_string(data)
+
+    if raw is None:
+        write_binary(dst, data)
+        logger(log_callback, f"[--] {label} (anchor not found)")
+        return 0, 0
+
+    patched = _patch(data, tag_off, raw, new_raw)
+
+    if patched is None:
+        write_binary(dst, data)
+        logger(log_callback, f"[!!] {label} (patch mismatch — skipped)")
+        return 0, 0
+
+    write_binary(dst, patched)
+    logger(log_callback, f"[OK] {label}")
+    logger(log_callback, f"   replaced: {repr(raw)}")
+    return 1, 1
 
 
 def process_folder(name, roll, folder, log_callback=None, progress_callback=None):
     out_folder = os.path.join(folder, "replaced_output")
     os.makedirs(out_folder, exist_ok=True)
 
-    new_content = (name + " " + roll).encode()
-    new_len = len(new_content)
-
+    new_raw = name + " " + roll
+    new_len = len(new_raw.encode('utf-8'))
     if new_len > 65535:
         raise ValueError(
-            f"name+roll encodes to {new_len} bytes, which exceeds the Java "
-            f"writeUTF maximum of 65535 bytes."
-        )
-    if new_len > 255:
-        warnings.warn(
-            f"name+roll encodes to {new_len} bytes (> 255). The 2-byte Java length "
-            f"header will have a non-zero high byte; PATTERN will not re-match on a "
-            f"subsequent run.",
-            UserWarning,
-            stacklevel=2,
+            f"name+roll encodes to {new_len} bytes, exceeding Java writeUTF max of 65535."
         )
 
-    # struct.pack(">H", n) produces the same bytes as b"\x00" + bytes([n]) for n < 256,
-    # but is explicit about the 2-byte big-endian Java writeUTF format and safe for n up to 65535.
-    replacement_prefix = struct.pack(">H", new_len) + new_content
-
-    total_replacements = 0
-    changed_files = 0
-
-    # Collect all files first, skipping the output directory
     all_files = []
     for root_dir, dirs, files in os.walk(folder):
-        # Prevent walking into the output folder on re-runs
         dirs[:] = [d for d in dirs if os.path.join(root_dir, d) != out_folder]
         for fname in files:
             all_files.append((root_dir, fname))
 
-    total_files = len(all_files)
+    total = len(all_files)
+    lock = threading.Lock()
+    done_count = [0]
+    changed_files = [0]
+    total_replacements = [0]
 
-    for i, (root_dir, fname) in enumerate(all_files):
+    def process_one(args):
+        root_dir, fname = args
         src = os.path.join(root_dir, fname)
         rel = os.path.relpath(src, folder)
         dst = os.path.join(out_folder, rel)
 
-        if progress_callback:
-            progress_callback(i + 1, total_files)
-
-        if not fname.endswith(".logic"):
-            copy_file(src, dst)
-            continue
-
-        data = read_binary(src)
-
-        found = []
-
-        def rep(m):
-            found.append(m.group(2))
-            return replacement_prefix + m.group(3) + m.group(4)
-
-        new_data, n = re.subn(PATTERN, rep, data)
-
-        write_binary(dst, new_data)
-
-        if n > 0:
-            changed_files += 1
-            total_replacements += n
-            logger(log_callback, f"[OK] {rel} ({n} replacements)")
-            for old in found:
-                logger(log_callback, f"   replaced: {safe_decode(old)}")
+        if fname.endswith(".logic"):
+            changed, reps = _patch_one(src, dst, new_raw, rel, log_callback)
         else:
-            logger(log_callback, f"[--] {rel} (no match)")
+            copy_file(src, dst)
+            changed, reps = 0, 0
 
-    return changed_files, total_replacements, out_folder
+        with lock:
+            done_count[0] += 1
+            changed_files[0] += changed
+            total_replacements[0] += reps
+            current = done_count[0]
+
+        if progress_callback:
+            progress_callback(current, total)
+
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
+        list(pool.map(process_one, all_files))
+
+    return changed_files[0], total_replacements[0], out_folder
+
+
+def _unique_dst(out_folder, fname):
+    """Return a collision-free destination path, appending _1, _2 … as needed."""
+    dst = os.path.join(out_folder, fname)
+    if not os.path.exists(dst):
+        return dst
+    stem, ext = os.path.splitext(fname)
+    i = 1
+    while True:
+        dst = os.path.join(out_folder, f"{stem}_{i}{ext}")
+        if not os.path.exists(dst):
+            return dst
+        i += 1
+
+
+def process_files(name, roll, file_paths, out_folder, log_callback=None, progress_callback=None):
+    """Process an explicit list of .logic file paths, writing output to out_folder."""
+    os.makedirs(out_folder, exist_ok=True)
+
+    new_raw = name + " " + roll
+    if len(new_raw.encode('utf-8')) > 65535:
+        raise ValueError("name+roll exceeds Java writeUTF max of 65535 bytes.")
+
+    logic_files = [p for p in file_paths if p.endswith('.logic')]
+    total = len(logic_files)
+    lock = threading.Lock()
+    done_count = [0]
+    changed_files = [0]
+    total_replacements = [0]
+
+    # Pre-allocate destinations to avoid races in _unique_dst
+    dst_map = {}
+    for src in logic_files:
+        fname = os.path.basename(src)
+        dst_map[src] = _unique_dst(out_folder, fname)
+
+    def process_one(src):
+        fname = os.path.basename(src)
+        dst   = dst_map[src]
+        changed, reps = _patch_one(src, dst, new_raw, fname, log_callback)
+
+        with lock:
+            done_count[0] += 1
+            changed_files[0] += changed
+            total_replacements[0] += reps
+            current = done_count[0]
+
+        if progress_callback:
+            progress_callback(current, total)
+
+    with ThreadPoolExecutor(max_workers=_MAX_WORKERS) as pool:
+        list(pool.map(process_one, logic_files))
+
+    return changed_files[0], total_replacements[0], out_folder
