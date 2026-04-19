@@ -3,7 +3,7 @@
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from .utils import read_binary, write_binary, copy_file, logger
+from .utils import read_binary, write_binary, logger
 
 # Unique 20-byte sequence that immediately precedes the TC_STRING in every .logic file.
 ANCHOR = bytes.fromhex('7371007e001fffffffffffffffff707070707070')
@@ -94,7 +94,8 @@ def process_folder(name, roll, folder, log_callback=None, progress_callback=None
     for root_dir, dirs, files in os.walk(folder):
         dirs[:] = [d for d in dirs if os.path.join(root_dir, d) != out_folder]
         for fname in files:
-            all_files.append((root_dir, fname))
+            if fname.endswith(".logic"):
+                all_files.append((root_dir, fname))
 
     total = len(all_files)
     lock = threading.Lock()
@@ -108,11 +109,7 @@ def process_folder(name, roll, folder, log_callback=None, progress_callback=None
         rel = os.path.relpath(src, folder)
         dst = os.path.join(out_folder, rel)
 
-        if fname.endswith(".logic"):
-            changed, reps = _patch_one(src, dst, new_raw, rel, log_callback)
-        else:
-            copy_file(src, dst)
-            changed, reps = 0, 0
+        changed, reps = _patch_one(src, dst, new_raw, rel, log_callback)
 
         with lock:
             done_count[0] += 1

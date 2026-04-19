@@ -85,11 +85,11 @@ class TestProcessFolder(unittest.TestCase):
             f.write(data)
         return path
 
-    def test_non_logic_files_are_copied(self):
+    def test_non_logic_files_are_ignored(self):
         self._write("readme.txt", b"hello")
         changed, total, out = process_folder("New Name", "BT21CS999", self.tmpdir)
         self.assertEqual(changed, 0)
-        self.assertTrue(os.path.exists(os.path.join(out, "readme.txt")))
+        self.assertFalse(os.path.exists(os.path.join(out, "readme.txt")))
 
     def test_logic_file_without_anchor_is_written_unchanged(self):
         original = b"\x00\x00plain data\x00\x00"
@@ -118,9 +118,10 @@ class TestProcessFolder(unittest.TestCase):
         out = os.path.join(self.tmpdir, "replaced_output")
         self.assertFalse(os.path.isdir(os.path.join(out, "replaced_output")))
 
-    def test_progress_callback_called_once_per_file(self):
-        self._write("a.txt", b"data")
-        self._write("b.txt", b"data")
+    def test_progress_callback_called_once_per_logic_file(self):
+        self._write("a.logic", make_logic_bytes("Old BT21CS001"))
+        self._write("b.logic", make_logic_bytes("Old BT21CS001"))
+        self._write("readme.txt", b"ignored")
         calls = []
         process_folder("X", "BT21CS001", self.tmpdir,
                        progress_callback=lambda c, t: calls.append((c, t)))
