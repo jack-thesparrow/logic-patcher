@@ -1,12 +1,18 @@
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "setuptools-scm>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "logic-patcher"
-version = "1.0.0"
+dynamic = ["version"]
 requires-python = ">=3.8"
 dependencies = []
+
+[tool.setuptools_scm]
+fallback_version = "1.0.0"
+
+[project.optional-dependencies]
+gui = ["PySide6>=6.4"]
 
 [project.scripts]
 logic-patcher = "logic_patcher.cli:main"
